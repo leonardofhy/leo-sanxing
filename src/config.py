@@ -35,6 +35,7 @@ class Config:
     TAB_NAME: str = "MetaLog"
     TIMESTAMP_COLUMN: str = "Timestamp"
     DIARY_COLUMN: str = "今天想記點什麼？"
+    LOGICAL_DATE_COLUMN: str = "今天的日期"
 
     # Processing
     MIN_DIARY_LENGTH: int = 3

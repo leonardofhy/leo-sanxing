@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, date, timedelta, timezone
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import hashlib
 import json
 
@@ -20,13 +20,31 @@ class DiaryEntry:
     is_early_morning: bool = False
     
     @classmethod
-    def from_raw(cls, raw_timestamp: str, diary_text: str, parsed_dt: datetime) -> "DiaryEntry":
-        """Create entry with computed fields"""
-        # Early morning adjustment
+    def from_raw(
+        cls,
+        raw_timestamp: str,
+        diary_text: str,
+        parsed_dt: datetime,
+        explicit_logical_date: Optional[date] = None,
+    ) -> "DiaryEntry":
+        """Create entry with computed fields.
+
+        ``is_early_morning`` always reflects an objective fact about the
+        timestamp (hour < 3). ``logical_date`` prefers ``explicit_logical_date``
+        when provided (source of truth from the user-filled 今天的日期 column)
+        and otherwise falls back to the early-morning adjustment rule.
+        """
+        # Early morning flag reflects the timestamp, independent of logical_date.
         is_early_morning = parsed_dt.hour < 3
-        logical_date = (parsed_dt.date() if not is_early_morning 
-                       else (parsed_dt - timedelta(days=1)).date())
-        
+        if explicit_logical_date is not None:
+            logical_date = explicit_logical_date
+        else:
+            logical_date = (
+                parsed_dt.date()
+                if not is_early_morning
+                else (parsed_dt - timedelta(days=1)).date()
+            )
+
         # Generate stable ID
         id_source = f"{raw_timestamp}{diary_text[:64]}"
         entry_id = hashlib.sha1(id_source.encode()).hexdigest()

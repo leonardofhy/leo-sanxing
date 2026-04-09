@@ -1,7 +1,7 @@
 """Entry normalization and filtering"""
 
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 from .models import DiaryEntry
 from .config import Config
 from .logger import get_logger
@@ -40,19 +40,28 @@ class EntryNormalizer:
         """Process single record into DiaryEntry or None if invalid"""
         raw_timestamp = str(record.get(self.config.TIMESTAMP_COLUMN, "")).strip()
         diary_text = str(record.get(self.config.DIARY_COLUMN, "")).strip()
-        
+
         # Skip if diary too short
         if len(diary_text) < self.config.MIN_DIARY_LENGTH:
             return None
-            
+
         # Parse timestamp
         parsed_dt = self._parse_timestamp(raw_timestamp)
         if not parsed_dt:
             logger.warning("Failed to parse timestamp: %s", raw_timestamp)
             return None
-            
-        return DiaryEntry.from_raw(raw_timestamp, diary_text, parsed_dt)
-    
+
+        # Optional user-provided logical date (source of truth when present)
+        raw_logical_date = str(record.get(self.config.LOGICAL_DATE_COLUMN, "")).strip()
+        explicit_logical_date = self._parse_logical_date(raw_logical_date)
+
+        return DiaryEntry.from_raw(
+            raw_timestamp,
+            diary_text,
+            parsed_dt,
+            explicit_logical_date=explicit_logical_date,
+        )
+
     def _parse_timestamp(self, raw: str) -> Optional[datetime]:
         """Try multiple timestamp formats"""
         for pattern in self.config.TIMESTAMP_PATTERNS:
@@ -61,6 +70,22 @@ class EntryNormalizer:
             except ValueError:
                 continue
         return None
+
+    def _parse_logical_date(self, raw: str) -> Optional[date]:
+        """Parse the user-filled 今天的日期 column as DD/MM/YYYY.
+
+        Returns None when the field is missing, empty, or unparseable. This
+        is expected for older rows, so we log at debug level rather than
+        warning to avoid noisy logs.
+        """
+        if not raw:
+            logger.debug("Logical date column missing or empty; falling back to timestamp rule")
+            return None
+        try:
+            return datetime.strptime(raw, "%d/%m/%Y").date()
+        except ValueError:
+            logger.debug("Failed to parse logical date %r; falling back to timestamp rule", raw)
+            return None
     
     def detect_anomalies(self, entries: List[DiaryEntry]) -> List[str]:
         """Detect gaps and length spikes"""
