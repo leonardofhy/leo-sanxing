@@ -46,18 +46,21 @@ class Config:
     MOOD_COLUMN: str = "今日整體心情感受"
     ENERGY_COLUMN: str = "今日整體精力水平如何？"
 
-    # Columns never populated in recent data; dropped at the ingestion boundary
+    # Columns with no downstream consumer; dropped at the ingestion boundary
     # before snapshotting so they don't bloat snapshots or pollute downstream.
+    #
+    # NOTE: Keep this set narrow. data_processor.py still reads several
+    # historically-populated columns (今天完成了哪些？, 今晚預計幾點入睡？,
+    # 今日手機螢幕使用時間, 今日使用最多的 App) to feed Activity / screen-time
+    # KPIs in the Streamlit dashboard. Even though those columns are currently
+    # 0% populated in recent data, dropping their keys silently zeroes the
+    # analytics, so they must stay.
     DEPRECATED_COLUMNS: frozenset[str] = field(
         default_factory=lambda: frozenset(
             {
                 "以下模塊廢棄",
-                "今天完成了哪些？",
-                "今晚預計幾點入睡？",
                 "Email address",
                 "Meta-Awareness Log 填寫反饋和修改建議",
-                "今日手機螢幕使用時間",
-                "今日使用最多的 App",
             }
         )
     )
