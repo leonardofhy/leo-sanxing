@@ -51,9 +51,14 @@ class EntryNormalizer:
             logger.warning("Failed to parse timestamp: %s", raw_timestamp)
             return None
 
-        # Optional user-provided logical date (source of truth when present)
-        raw_logical_date = str(record.get(self.config.LOGICAL_DATE_COLUMN, "")).strip()
-        explicit_logical_date = self._parse_logical_date(raw_logical_date)
+        # Optional user-provided logical date (source of truth when present).
+        # Historical rows commonly omit this column entirely; treat missing or
+        # empty values as a silent fallback rather than a parse failure.
+        raw_logical_date_value = record.get(self.config.LOGICAL_DATE_COLUMN)
+        raw_logical_date = str(raw_logical_date_value).strip() if raw_logical_date_value else ""
+        explicit_logical_date = (
+            self._parse_logical_date(raw_logical_date) if raw_logical_date else None
+        )
 
         return DiaryEntry.from_raw(
             raw_timestamp,
@@ -74,13 +79,11 @@ class EntryNormalizer:
     def _parse_logical_date(self, raw: str) -> Optional[date]:
         """Parse the user-filled 今天的日期 column as DD/MM/YYYY.
 
-        Returns None when the field is missing, empty, or unparseable. This
-        is expected for older rows, so we log at debug level rather than
-        warning to avoid noisy logs.
+        Callers should only invoke this with a non-empty value. Returns None
+        when the value cannot be parsed, logging at debug level so genuine
+        bad values are still visible without being confused with the common
+        "column absent" case (which is handled silently by the caller).
         """
-        if not raw:
-            logger.debug("Logical date column missing or empty; falling back to timestamp rule")
-            return None
         try:
             return datetime.strptime(raw, "%d/%m/%Y").date()
         except ValueError:
