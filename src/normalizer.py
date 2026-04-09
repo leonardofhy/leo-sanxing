@@ -1,12 +1,69 @@
 """Entry normalization and filtering"""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from datetime import datetime, date
 from .models import DiaryEntry
 from .config import Config
 from .logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _parse_time_cell(value: Any) -> Optional[str]:
+    """Normalize a time cell value to ``HH:MM`` or return ``None``.
+
+    Accepts:
+    - ``HH:MM:SS`` (e.g. ``"04:40:00"`` → ``"04:40"``)
+    - ``HH:MM``    (e.g. ``"04:40"``    → ``"04:40"``)
+    - ``HHMM``     (4 digits, e.g. ``"0420"`` → ``"04:20"``)
+
+    Invalid / empty / out-of-range values return ``None`` silently.
+    """
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    hour: Optional[int] = None
+    minute: Optional[int] = None
+
+    if ":" in raw:
+        parts = raw.split(":")
+        if len(parts) in (2, 3):
+            try:
+                hour = int(parts[0])
+                minute = int(parts[1])
+            except ValueError:
+                return None
+    elif len(raw) == 4 and raw.isdigit():
+        try:
+            hour = int(raw[:2])
+            minute = int(raw[2:])
+        except ValueError:
+            return None
+
+    if hour is None or minute is None:
+        return None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _parse_rating_cell(value: Any, low: int = 1, high: int = 5) -> Optional[int]:
+    """Parse a numeric rating cell, returning ``None`` when blank/out-of-range."""
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        n = int(float(raw))
+    except ValueError:
+        return None
+    if not (low <= n <= high):
+        return None
+    return n
 
 
 class EntryNormalizer:
@@ -60,11 +117,24 @@ class EntryNormalizer:
             self._parse_logical_date(raw_logical_date) if raw_logical_date else None
         )
 
+        # Optional structured fields (sleep timing, ratings). Missing or
+        # invalid values become None silently — these are not required.
+        sleep_bedtime = _parse_time_cell(record.get(self.config.SLEEP_BEDTIME_COLUMN))
+        wake_time = _parse_time_cell(record.get(self.config.WAKE_TIME_COLUMN))
+        sleep_quality = _parse_rating_cell(record.get(self.config.SLEEP_QUALITY_COLUMN))
+        mood = _parse_rating_cell(record.get(self.config.MOOD_COLUMN))
+        energy = _parse_rating_cell(record.get(self.config.ENERGY_COLUMN))
+
         return DiaryEntry.from_raw(
             raw_timestamp,
             diary_text,
             parsed_dt,
             explicit_logical_date=explicit_logical_date,
+            sleep_bedtime=sleep_bedtime,
+            wake_time=wake_time,
+            sleep_quality=sleep_quality,
+            mood=mood,
+            energy=energy,
         )
 
     def _parse_timestamp(self, raw: str) -> Optional[datetime]:

@@ -36,6 +36,11 @@ class Config:
     TIMESTAMP_COLUMN: str = "Timestamp"
     DIARY_COLUMN: str = "今天想記點什麼？"
     LOGICAL_DATE_COLUMN: str = "今天的日期"
+    SLEEP_BEDTIME_COLUMN: str = "昨晚實際入睡時間"
+    WAKE_TIME_COLUMN: str = "今天實際起床時間"
+    SLEEP_QUALITY_COLUMN: str = "昨晚睡眠品質如何？"
+    MOOD_COLUMN: str = "今日整體心情感受"
+    ENERGY_COLUMN: str = "今日整體精力水平如何？"
 
     # Processing
     MIN_DIARY_LENGTH: int = 3
@@ -82,7 +87,7 @@ class Config:
     VERSION: Dict[str, str] = field(
         default_factory=lambda: {
             "schema": "s1",
-            "prompt": "p1",
+            "prompt": "p2",
             "model": "deepseek-reasoner@2025-08",
             "contract": "c1",
         }

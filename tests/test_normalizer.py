@@ -95,3 +95,82 @@ def test_invalid_logical_date_falls_back():
     entry = _single_entry(config, record)
     assert entry.logical_date == date(2026, 4, 4)
     assert entry.is_early_morning is False
+
+
+def test_normalizer_parses_hhmm_format():
+    """4-digit compact HHMM format should be normalized to HH:MM."""
+    config = Config()
+    record = {
+        config.TIMESTAMP_COLUMN: "2026-04-04T10:15:00",
+        config.DIARY_COLUMN: "睡眠測試",
+        config.SLEEP_BEDTIME_COLUMN: "0420",
+    }
+    entry = _single_entry(config, record)
+    assert entry.sleep_bedtime == "04:20"
+
+
+def test_normalizer_parses_hhmmss_format():
+    """HH:MM:SS format should be normalized to HH:MM."""
+    config = Config()
+    record = {
+        config.TIMESTAMP_COLUMN: "2026-04-04T10:15:00",
+        config.DIARY_COLUMN: "起床測試",
+        config.WAKE_TIME_COLUMN: "04:40:00",
+    }
+    entry = _single_entry(config, record)
+    assert entry.wake_time == "04:40"
+
+
+def test_normalizer_rejects_invalid_time():
+    """Out-of-range time value should result in None."""
+    config = Config()
+    record = {
+        config.TIMESTAMP_COLUMN: "2026-04-04T10:15:00",
+        config.DIARY_COLUMN: "無效時間",
+        config.SLEEP_BEDTIME_COLUMN: "25:99",
+    }
+    entry = _single_entry(config, record)
+    assert entry.sleep_bedtime is None
+
+
+def test_normalizer_parses_rating_fields():
+    """Mood, energy, and sleep quality should parse as integers in 1-5."""
+    config = Config()
+    record = {
+        config.TIMESTAMP_COLUMN: "2026-04-04T10:15:00",
+        config.DIARY_COLUMN: "評分測試",
+        config.SLEEP_QUALITY_COLUMN: "4",
+        config.MOOD_COLUMN: "5",
+        config.ENERGY_COLUMN: "3",
+    }
+    entry = _single_entry(config, record)
+    assert entry.sleep_quality == 4
+    assert entry.mood == 5
+    assert entry.energy == 3
+
+
+def test_normalizer_rejects_out_of_range_rating():
+    """Rating outside 1-5 range should become None."""
+    config = Config()
+    record = {
+        config.TIMESTAMP_COLUMN: "2026-04-04T10:15:00",
+        config.DIARY_COLUMN: "越界評分",
+        config.MOOD_COLUMN: "7",
+    }
+    entry = _single_entry(config, record)
+    assert entry.mood is None
+
+
+def test_normalizer_structured_fields_default_none_when_absent():
+    """Records without structured columns yield None for those fields."""
+    config = Config()
+    record = {
+        config.TIMESTAMP_COLUMN: "2026-04-04T10:15:00",
+        config.DIARY_COLUMN: "無結構化資料",
+    }
+    entry = _single_entry(config, record)
+    assert entry.sleep_bedtime is None
+    assert entry.wake_time is None
+    assert entry.sleep_quality is None
+    assert entry.mood is None
+    assert entry.energy is None
