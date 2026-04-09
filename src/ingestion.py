@@ -54,6 +54,7 @@ class SheetIngester:
             # Get all records as list of dicts, with duplicate header fallback
             try:
                 records = worksheet.get_all_records()
+                records = self._filter_deprecated_columns(records)
             except gspread.exceptions.GSpreadException as e:
                 if "duplicates" in str(e).lower():
                     logger.warning("Duplicate header detected; applying auto-unique fallback")
@@ -70,6 +71,7 @@ class SheetIngester:
                         for row in data_rows
                         if any(cell.strip() for cell in row)
                     ]
+                    records = self._filter_deprecated_columns(records)
                 else:
                     raise
 
@@ -129,6 +131,18 @@ class SheetIngester:
                 self.config.TAB_NAME,
             )
             raise
+
+    def _filter_deprecated_columns(self, records: List[Dict]) -> List[Dict]:
+        """Drop known-deprecated and auto-dedup-artifact columns from all records."""
+        if not records:
+            return records
+        first = records[0]
+        dropped = [k for k in first.keys() if self.config.is_deprecated_column(k)]
+        if not dropped:
+            return records
+        logger.info("Dropping %d deprecated columns: %s", len(dropped), sorted(dropped))
+        keep_keys = [k for k in first.keys() if k not in dropped]
+        return [{k: r.get(k, "") for k in keep_keys} for r in records]
 
     def _save_snapshot(self, records: List[Dict]) -> None:
         """Save raw data snapshot for debugging/replay.

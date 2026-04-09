@@ -17,6 +17,10 @@ except ImportError:  # pragma: no cover
 
 _SHEET_URL_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
 
+# Matches auto-generated artifact columns created by _make_headers_unique()
+# when the sheet has blank or duplicate headers (e.g. "Column 14", "Column 14_2").
+_DEPRECATED_COLUMN_PATTERN = re.compile(r"^Column \d+(_\d+)?$")
+
 
 def _extract_sheet_id(value: str) -> str:
     if not value:
@@ -35,6 +39,31 @@ class Config:
     TAB_NAME: str = "MetaLog"
     TIMESTAMP_COLUMN: str = "Timestamp"
     DIARY_COLUMN: str = "今天想記點什麼？"
+    LOGICAL_DATE_COLUMN: str = "今天的日期"
+    SLEEP_BEDTIME_COLUMN: str = "昨晚實際入睡時間"
+    WAKE_TIME_COLUMN: str = "今天實際起床時間"
+    SLEEP_QUALITY_COLUMN: str = "昨晚睡眠品質如何？"
+    MOOD_COLUMN: str = "今日整體心情感受"
+    ENERGY_COLUMN: str = "今日整體精力水平如何？"
+
+    # Columns with no downstream consumer; dropped at the ingestion boundary
+    # before snapshotting so they don't bloat snapshots or pollute downstream.
+    #
+    # NOTE: Keep this set narrow. data_processor.py still reads several
+    # historically-populated columns (今天完成了哪些？, 今晚預計幾點入睡？,
+    # 今日手機螢幕使用時間, 今日使用最多的 App) to feed Activity / screen-time
+    # KPIs in the Streamlit dashboard. Even though those columns are currently
+    # 0% populated in recent data, dropping their keys silently zeroes the
+    # analytics, so they must stay.
+    DEPRECATED_COLUMNS: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            {
+                "以下模塊廢棄",
+                "Email address",
+                "Meta-Awareness Log 填寫反饋和修改建議",
+            }
+        )
+    )
 
     # Processing
     MIN_DIARY_LENGTH: int = 3
@@ -81,7 +110,7 @@ class Config:
     VERSION: Dict[str, str] = field(
         default_factory=lambda: {
             "schema": "s1",
-            "prompt": "p1",
+            "prompt": "p2",
             "model": "deepseek-reasoner@2025-08",
             "contract": "c1",
         }
@@ -119,6 +148,12 @@ class Config:
             errors.append("MIN_DIARY_LENGTH must be >=1")
         if errors:
             raise ValueError("Config validation errors:\n- " + "\n- ".join(errors))
+
+    def is_deprecated_column(self, name: str) -> bool:
+        """Return True if a sheet column should be dropped before processing."""
+        if name in self.DEPRECATED_COLUMNS:
+            return True
+        return bool(_DEPRECATED_COLUMN_PATTERN.match(name))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the config to a dictionary.
@@ -201,7 +236,14 @@ def _coerce_types(data: Dict[str, Any]) -> Dict[str, Any]:
     bool_fields.update({"LLM_STREAM"})
     bool_fields.update({"SNAPSHOT_DEDUP"})
     bool_fields.update({"EMAIL_ENABLED"})
-    path_fields = {"CREDENTIALS_PATH", "OUTPUT_DIR", "OFFLINE_SNAPSHOT", "credentials_path", "output_dir", "offline_snapshot"}
+    path_fields = {
+        "CREDENTIALS_PATH",
+        "OUTPUT_DIR",
+        "OFFLINE_SNAPSHOT",
+        "credentials_path",
+        "output_dir",
+        "offline_snapshot",
+    }
     for f in int_fields:
         if f in data and isinstance(data[f], str) and data[f].isdigit():
             data[f] = int(data[f])
@@ -217,14 +259,14 @@ def _coerce_types(data: Dict[str, Any]) -> Dict[str, Any]:
         data.pop("spreadsheet_id", None)  # Remove the lowercase version
     if "SHEET_ID" in data:
         data["SPREADSHEET_ID"] = _extract_sheet_id(str(data["SHEET_ID"]))
-        
+
     # Handle other field mappings
     field_mappings = {
         "sheet_id": "SPREADSHEET_ID",  # Legacy support
-        "credentials_path": "CREDENTIALS_PATH", 
+        "credentials_path": "CREDENTIALS_PATH",
         "tab_name": "TAB_NAME",
         "min_diary_length": "MIN_DIARY_LENGTH",
-        "default_days_window": "DEFAULT_DAYS_WINDOW", 
+        "default_days_window": "DEFAULT_DAYS_WINDOW",
         "max_char_budget": "MAX_CHAR_BUDGET",
         "llm_endpoint": "LLM_ENDPOINT",
         "llm_model": "LLM_MODEL",
@@ -246,13 +288,13 @@ def _coerce_types(data: Dict[str, Any]) -> Dict[str, Any]:
         "email_password": "EMAIL_PASSWORD",
         "email_recipient": "EMAIL_RECIPIENT",
         "email_sender_name": "EMAIL_SENDER_NAME",
-        "email_max_retries": "EMAIL_MAX_RETRIES"
+        "email_max_retries": "EMAIL_MAX_RETRIES",
     }
-    
+
     # Apply field mappings
     for old_key, new_key in field_mappings.items():
         if old_key in data:
             data[new_key] = data[old_key]
             data.pop(old_key, None)  # Remove the old key
-    
+
     return data

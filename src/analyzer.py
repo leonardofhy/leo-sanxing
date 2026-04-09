@@ -109,6 +109,7 @@ class AnalysisPromptTemplate(PromptTemplate):
 3. 不捏造未出現的事件；允許指出資料不足處。
 4. 若日誌含凌晨（<03:00）內容，仍視為其邏輯日期。
 5. reflectiveQuestion 要能引導下一步探索，而非重述既有狀態。
+6. 每則日誌的日期行後可能附帶結構化指標（睡眠時段、睡眠品質、心情、精力，皆為使用者當日自評）。請將這些數值視為客觀事實錨點，用以對照文字敘述，不得虛構不存在的數值。
 
 使用者日誌內容 (原文可能混合語言)：
 {entries_text}
@@ -406,14 +407,55 @@ class EntryFormatter:
     """Formats diary entries for LLM consumption"""
 
     @staticmethod
+    def _format_metadata_header(entry: DiaryEntry) -> Optional[str]:
+        """Build the optional metadata line for an entry.
+
+        Returns ``None`` when the entry has no structured fields populated,
+        so callers can fall back to the plain ``[logical_date]`` header.
+        """
+        parts: List[str] = []
+
+        bedtime = entry.sleep_bedtime
+        wake = entry.wake_time
+        if bedtime is not None or wake is not None:
+            bt = bedtime if bedtime is not None else "?"
+            wt = wake if wake is not None else "?"
+            parts.append(f"睡眠 {bt}→{wt}")
+
+        sq = entry.sleep_quality
+        if sq is not None:
+            parts.append(f"睡眠品質 {sq}/5")
+
+        m = entry.mood
+        if m is not None:
+            parts.append(f"心情 {m}/5")
+
+        e = entry.energy
+        if e is not None:
+            parts.append(f"精力 {e}/5")
+
+        if not parts:
+            return None
+
+        return f"[{entry.logical_date}] " + "｜".join(parts)
+
+    @staticmethod
     def format_entries(entries: List[DiaryEntry]) -> str:
-        """Format entries into structured text"""
+        """Format entries into structured text.
+
+        When structured fields are present, a metadata header line precedes
+        the diary text; otherwise the plain ``[logical_date]`` header is
+        used (backward-compatible behavior).
+        """
         if not entries:
             return ""
 
         formatted = []
         for entry in entries:
-            formatted.append(f"[{entry.logical_date}]\n{entry.diary_text}")
+            header = EntryFormatter._format_metadata_header(entry)
+            if header is None:
+                header = f"[{entry.logical_date}]"
+            formatted.append(f"{header}\n{entry.diary_text}")
 
         return "\n\n".join(formatted)
 
