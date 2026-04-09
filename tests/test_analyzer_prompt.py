@@ -32,6 +32,8 @@ def test_formatter_includes_structured_fields_when_present():
         energy=3,
     )
     out = EntryFormatter.format_entries([entry])
+    # Exact metadata header line (pins separator, ordering, full-width chars)
+    assert "[2025-08-21] 睡眠 06:48→14:07｜睡眠品質 4/5｜心情 5/5｜精力 3/5" in out
     # Values present
     assert "06:48" in out
     assert "14:07" in out

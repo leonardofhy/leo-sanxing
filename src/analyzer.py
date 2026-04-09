@@ -415,22 +415,22 @@ class EntryFormatter:
         """
         parts: List[str] = []
 
-        bedtime = getattr(entry, "sleep_bedtime", None)
-        wake = getattr(entry, "wake_time", None)
+        bedtime = entry.sleep_bedtime
+        wake = entry.wake_time
         if bedtime is not None or wake is not None:
             bt = bedtime if bedtime is not None else "?"
             wt = wake if wake is not None else "?"
             parts.append(f"睡眠 {bt}→{wt}")
 
-        sq = getattr(entry, "sleep_quality", None)
+        sq = entry.sleep_quality
         if sq is not None:
             parts.append(f"睡眠品質 {sq}/5")
 
-        m = getattr(entry, "mood", None)
+        m = entry.mood
         if m is not None:
             parts.append(f"心情 {m}/5")
 
-        e = getattr(entry, "energy", None)
+        e = entry.energy
         if e is not None:
             parts.append(f"精力 {e}/5")
 
